@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Check that the dotagents environment is in order. For each check,
+# print a status (ok / warn / fail) and, on anything but ok, the next
+# step to fix it.
+#
+# This script only checks things this repo actually relies on. Editor
+# setup, shell config, individual agent installs, etc. are out of scope.
+#
+# Exits non-zero if any check fails.
+set -u
+
+readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly CLAUDE_DIR="${HOME}/.claude"
+readonly EXPECTED_ROOT="${HOME}/.agents"
+
+if [[ -t 1 ]]; then
+  c_ok=$'\e[32m'; c_warn=$'\e[33m'; c_fail=$'\e[31m'; c_reset=$'\e[0m'
+else
+  c_ok=''; c_warn=''; c_fail=''; c_reset=''
+fi
+
+ok=0; warn=0; fail=0
+
+report() {
+  local status="$1" label="$2" hint="${3:-}"
+  case "$status" in
+    ok)   printf '  %sok%s    %s\n'   "$c_ok"   "$c_reset" "$label"; ok=$((ok+1)) ;;
+    warn) printf '  %swarn%s  %s\n'   "$c_warn" "$c_reset" "$label"; warn=$((warn+1)) ;;
+    fail) printf '  %sfail%s  %s\n'   "$c_fail" "$c_reset" "$label"; fail=$((fail+1)) ;;
+  esac
+  [[ -n "$hint" && "$status" != ok ]] && printf '          → %s\n' "$hint"
+}
+
+echo "Tools:"
+if command -v gh >/dev/null; then
+  report ok "gh CLI"
+else
+  report fail "gh CLI" "install gh: https://cli.github.com"
+fi
+
+if command -v skills >/dev/null; then
+  report ok "skills CLI (on PATH)"
+elif command -v npx >/dev/null; then
+  report ok "skills CLI (via npx)"
+else
+  report fail "skills CLI" "install Node.js (provides npx) or run: npm install -g skills"
+fi
+
+echo
+echo "Repo location:"
+if [[ "$REPO_ROOT" == "$EXPECTED_ROOT" ]]; then
+  report ok "cloned at ~/.agents"
+else
+  report warn "cloned at $REPO_ROOT" "the skills CLI looks for its lockfile at ~/.agents/.skill-lock.json by default; cloning here means you'll need XDG_STATE_HOME or a symlink"
+fi
+
+echo
+echo "Symlinks:"
+claude_md="$CLAUDE_DIR/CLAUDE.md"
+if [[ -L "$claude_md" ]]; then
+  if [[ "$(readlink "$claude_md")" == "$REPO_ROOT/AGENTS.md" ]]; then
+    report ok "AGENTS.md → ~/.claude/CLAUDE.md"
+  else
+    report fail "AGENTS.md → ~/.claude/CLAUDE.md" "symlinks to $(readlink "$claude_md") instead; remove and re-run $REPO_ROOT/bin/setup"
+  fi
+elif [[ -e "$claude_md" ]]; then
+  report fail "AGENTS.md → ~/.claude/CLAUDE.md" "$claude_md exists but is not a symlink; remove it and run $REPO_ROOT/bin/setup"
+else
+  report fail "AGENTS.md → ~/.claude/CLAUDE.md" "run $REPO_ROOT/bin/setup"
+fi
+
+echo
+echo "skills CLI state:"
+if [[ -f "$REPO_ROOT/.skill-lock.json" ]]; then
+  report ok ".skill-lock.json present"
+else
+  report warn ".skill-lock.json present" "no skills tracked yet — install one with: skills add <source> -g"
+fi
+
+echo
+total=$((ok + warn + fail))
+printf 'Summary: %s%d ok%s, %s%d warn%s, %s%d fail%s (of %d)\n' \
+  "$c_ok" "$ok" "$c_reset" \
+  "$c_warn" "$warn" "$c_reset" \
+  "$c_fail" "$fail" "$c_reset" \
+  "$total"
+
+[[ $fail -eq 0 ]]
