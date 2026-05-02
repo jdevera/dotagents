@@ -39,11 +39,16 @@ payload=$(jq -n \
     max_tokens: 800,
     messages: [{
       role: "user",
-      content: ("Write concise release notes for version \($ver) of a personal dotagents skills repo. " +
+      content: ("Write concise release notes for jdevera/dotagents version \($ver).\n\n" +
+               "This release stems from a change to `.skill-lock.json`, the lockfile written by the `skills` CLI. " +
+               "Each entry under `.skills` is one installed skill: the key is its name, `sourceUrl` is where it came from.\n\n" +
+               "Report only what skills were Added / Updated / Removed compared to the prior state. " +
+               "Ignore non-skill bookkeeping fields (`version`, `lastSelectedAgents`, `installedAt`, `updatedAt`, `skillFolderHash`). " +
+               "Do not invent filenames or fields.\n\n" +
                "Format: a one-sentence summary, then markdown bullet groups under **Added** / **Updated** / **Removed** as relevant. " +
                "Skill names in code spans. No filler, no preamble.\n\n" +
                "Commit message:\n\($msg)\n\n" +
-               "\($label):\n```diff\n\($diff)\n```")
+               "\($label) of `.skill-lock.json`:\n```diff\n\($diff)\n```")
     }]
   }')
 
