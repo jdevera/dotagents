@@ -1,0 +1,30 @@
+{
+  "version": 3,
+  "skills": {
+    "typescript-code-review": {
+      "source": "jdevera/agent-skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/jdevera/agent-skills.git",
+      "skillPath": "skills/typescript-code-review/SKILL.md",
+      "skillFolderHash": "c2cffe5fe8203f2b82573549cb389d649511a987",
+      "installedAt": "2026-05-02T22:13:03.282Z",
+      "updatedAt": "2026-05-02T22:13:03.282Z"
+    }
+  },
+  "lastSelectedAgents": [
+    "amp",
+    "antigravity",
+    "cline",
+    "codex",
+    "cursor",
+    "deepagents",
+    "dexto",
+    "firebender",
+    "gemini-cli",
+    "github-copilot",
+    "kimi-cli",
+    "opencode",
+    "warp",
+    "claude-code"
+  ]
+}

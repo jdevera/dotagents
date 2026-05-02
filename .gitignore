@@ -1,2 +1,5 @@
 .DS_Store
 *.log
+
+# Skills are not committed; each one is acknowledged here when first installed.
+skills/typescript-code-review/
