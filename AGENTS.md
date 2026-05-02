@@ -7,6 +7,10 @@
 - Plan against existing patterns in the codebase before reaching for
   external references.
 - Surface meaningful trade-offs to me before committing to one.
+- Don't push, force-push, open or close PRs, comment on GitHub, or
+  send messages on my behalf. Ask first. Local commits are fine.
+- When asked to plan, plan only. No edits, no commits, no commands
+  that change state until I confirm.
 
 ## Code quality
 

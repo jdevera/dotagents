@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Symlink dotagents content into Claude Code's config dir.
+# Symlink dotagents content into each agent's config dir.
 #
 # Source of truth:
-#   AGENTS.md  -> ~/.claude/CLAUDE.md
+#   AGENTS.md  -> ~/.claude/CLAUDE.md  (Claude reads CLAUDE.md, not AGENTS.md)
+#   AGENTS.md  -> ~/.codex/AGENTS.md   (Codex reads AGENTS.md directly)
 #   skills/*   -> ~/.claude/skills/*   (only if skills/ is present;
 #                                       populated by the release tarball)
 #
 # Usage: bin/setup [--dry-run]
 
-readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 readonly CLAUDE_DIR="${HOME}/.claude"
+readonly CODEX_DIR="${HOME}/.codex"
 
 DRY_RUN=0
 for arg in "$@"; do
@@ -56,4 +58,5 @@ link_dir_children() {
 }
 
 link "${REPO_ROOT}/AGENTS.md"             "${CLAUDE_DIR}/CLAUDE.md"
+link "${REPO_ROOT}/AGENTS.md"             "${CODEX_DIR}/AGENTS.md"
 link_dir_children "${REPO_ROOT}/skills"   "${CLAUDE_DIR}/skills"

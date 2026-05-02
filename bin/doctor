@@ -9,8 +9,9 @@
 # Exits non-zero if any check fails.
 set -u
 
-readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 readonly CLAUDE_DIR="${HOME}/.claude"
+readonly CODEX_DIR="${HOME}/.codex"
 readonly EXPECTED_ROOT="${HOME}/.agents"
 
 if [[ -t 1 ]]; then
@@ -56,18 +57,24 @@ fi
 
 echo
 echo "Symlinks:"
-claude_md="$CLAUDE_DIR/CLAUDE.md"
-if [[ -L "$claude_md" ]]; then
-  if [[ "$(readlink "$claude_md")" == "$REPO_ROOT/AGENTS.md" ]]; then
-    report ok "AGENTS.md → ~/.claude/CLAUDE.md"
+
+check_agents_link() {
+  local label="$1" target="$2"
+  if [[ -L "$target" ]]; then
+    if [[ "$(readlink "$target")" == "$REPO_ROOT/AGENTS.md" ]]; then
+      report ok "$label"
+    else
+      report fail "$label" "symlinks to $(readlink "$target") instead; remove and re-run $REPO_ROOT/bin/setup"
+    fi
+  elif [[ -e "$target" ]]; then
+    report fail "$label" "$target exists but is not a symlink; remove it and run $REPO_ROOT/bin/setup"
   else
-    report fail "AGENTS.md → ~/.claude/CLAUDE.md" "symlinks to $(readlink "$claude_md") instead; remove and re-run $REPO_ROOT/bin/setup"
+    report fail "$label" "run $REPO_ROOT/bin/setup"
   fi
-elif [[ -e "$claude_md" ]]; then
-  report fail "AGENTS.md → ~/.claude/CLAUDE.md" "$claude_md exists but is not a symlink; remove it and run $REPO_ROOT/bin/setup"
-else
-  report fail "AGENTS.md → ~/.claude/CLAUDE.md" "run $REPO_ROOT/bin/setup"
-fi
+}
+
+check_agents_link "AGENTS.md → ~/.claude/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
+check_agents_link "AGENTS.md → ~/.codex/AGENTS.md"  "$CODEX_DIR/AGENTS.md"
 
 echo
 echo "skills CLI state:"

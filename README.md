@@ -16,7 +16,7 @@ of them.
 ```bash
 git clone git@github.com:jdevera/dotagents.git ~/.agents
 cd ~/.agents
-./bin/setup                          # symlinks into ~/.claude/
+./bin/setup                          # symlinks into ~/.claude/ and ~/.codex/
 npx skills experimental_install      # restores every skill from the lockfile
 ./bin/doctor                         # verify
 ```
@@ -36,8 +36,8 @@ in place yet.
 
 | Path                | Role                                                      | Managed by |
 |---------------------|-----------------------------------------------------------|------------|
-| `AGENTS.md`         | Shared base instructions (symlinked into `~/.claude/CLAUDE.md`) | hand |
-| `bin/setup`         | Symlinks `AGENTS.md` and `skills/*` into `~/.claude/`     | hand       |
+| `AGENTS.md`         | Shared base instructions, symlinked into `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` | hand |
+| `bin/setup`         | Creates the symlinks above (and links `skills/*` into `~/.claude/skills/`) | hand |
 | `bin/doctor`        | Verifies the install                                      | hand       |
 | `.skill-lock.json`  | Per-skill source manifest (URL + commit SHA + timestamps) | `skills` CLI |
 | `shelf.json`        | Deactivated skills                                        | `skills` CLI |
