@@ -31,20 +31,24 @@ ending), the same flow works by hand:
 git clone git@github.com:jdevera/dotagents.git ~/.agents
 cd ~/.agents
 ./bin/setup                          # symlinks into ~/.claude/ and ~/.codex/
-npx skills experimental_install      # restores every skill from the lockfile
+./bin/restore-skills                 # restores every skill from .skill-lock.json
 ./bin/doctor                         # verify
 ```
 
-`npx skills ...` is the documented invocation; if you'd rather have
-the binary on `PATH` (e.g. for supply-chain peace of mind), install it
-globally with `npm install -g skills` and drop the `npx`.
+`bin/restore-skills` is a thin wrapper that re-issues `npx skills
+add … -g` per lockfile entry. It exists because the `skills` CLI has
+no command to restore global skills from `.skill-lock.json` yet (see
+[#1](https://github.com/jdevera/dotagents/issues/1) for context and
+[vercel-labs/skills#743](https://github.com/vercel-labs/skills/pull/743)
+for the upstream fix in flight). When that PR ships, the wrapper goes
+away and this line becomes `npx skills experimental_install -g`.
 
 `bin/doctor` checks for the things this repo assumes are present
 (`gh`, a way to run `skills`, the symlinks `bin/setup` creates, the
 lockfile) and prints a remediation hint for anything missing. It only
-inspects state, so the order of `setup` / `experimental_install` /
-`doctor` doesn't matter; doctor just reports whichever pieces aren't
-in place yet.
+inspects state, so the order of `setup` / `restore-skills` / `doctor`
+doesn't matter; doctor just reports whichever pieces aren't in place
+yet.
 
 ## What lives here
 
@@ -53,6 +57,7 @@ in place yet.
 | `AGENTS.md`         | Shared base instructions, symlinked into `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` | hand |
 | `bin/setup`         | Creates the symlinks above (and links `skills/*` into `~/.claude/skills/`) | hand |
 | `bin/doctor`        | Verifies the install                                      | hand       |
+| `bin/restore-skills` | Restores skills from `.skill-lock.json` (workaround, see issue #1) | hand |
 | `.skill-lock.json`  | Per-skill source manifest (URL + commit SHA + timestamps) | `skills` CLI |
 | `shelf.json`        | Deactivated skills                                        | `skills` CLI |
 | `skills/`           | Skill files (only present after extracting a release tarball) | CI |

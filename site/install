@@ -50,8 +50,8 @@ git clone "$DOTAGENTS_REPO" "$DOTAGENTS_DIR"
 log "running bin/setup"
 "$DOTAGENTS_DIR/bin/setup"
 
-log "installing skills from lockfile"
-( cd "$DOTAGENTS_DIR" && npx --yes skills experimental_install )
+log "restoring skills from lockfile"
+"$DOTAGENTS_DIR/bin/restore-skills"
 
 log "running bin/doctor"
 "$DOTAGENTS_DIR/bin/doctor"
