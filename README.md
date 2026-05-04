@@ -14,6 +14,20 @@ of them.
 ## Install
 
 ```bash
+sh -c "$(curl -fsLS agents.jdevera.casa/install)"
+```
+
+That clones this repo into `~/.agents`, runs `bin/setup`, restores every
+skill from the lockfile, and finishes with `bin/doctor`. Requires `git`
+and `npx` on the host; bails before changing anything if `~/.agents`
+already exists.
+
+### Manual install / fallback
+
+If the vanity domain is unreachable (DNS, expired registration, world
+ending), the same flow works by hand:
+
+```bash
 git clone git@github.com:jdevera/dotagents.git ~/.agents
 cd ~/.agents
 ./bin/setup                          # symlinks into ~/.claude/ and ~/.codex/
@@ -42,6 +56,7 @@ in place yet.
 | `.skill-lock.json`  | Per-skill source manifest (URL + commit SHA + timestamps) | `skills` CLI |
 | `shelf.json`        | Deactivated skills                                        | `skills` CLI |
 | `skills/`           | Skill files (only present after extracting a release tarball) | CI |
+| `site/`             | Installer landing page + bootstrap script served at `agents.jdevera.casa` | hand |
 
 Skill **files** are not committed in git, only the lockfile is. CI
 materialises them into `skills/` as part of every release tarball, so

@@ -1,0 +1,57 @@
+#!/bin/sh
+
+set -eu
+
+DOTAGENTS_REPO=${DOTAGENTS_REPO:-https://github.com/jdevera/dotagents.git}
+DOTAGENTS_DIR=${DOTAGENTS_DIR:-$HOME/.agents}
+
+log() {
+  printf '[dotagents bootstrap] %s\n' "$*" >&2
+}
+
+error() {
+  printf '%s\n' "$1" >&2
+  exit 1
+}
+
+require() {
+  command -v "$1" >/dev/null 2>&1 || error "$2"
+}
+
+remote_matches() {
+  url=$1
+  case "$url" in
+    https://github.com/jdevera/dotagents*|\
+    git@github.com:jdevera/dotagents*|\
+    ssh://git@github.com/jdevera/dotagents*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+if [ -e "$DOTAGENTS_DIR" ]; then
+  if [ -d "$DOTAGENTS_DIR/.git" ] \
+    && remote_origin=$(git -C "$DOTAGENTS_DIR" remote get-url origin 2>/dev/null) \
+    && remote_matches "$remote_origin"; then
+    log "$DOTAGENTS_DIR is already a dotagents checkout (origin: $remote_origin)"
+    log "running doctor to verify install state"
+    exec "$DOTAGENTS_DIR/bin/doctor"
+  fi
+  error "$DOTAGENTS_DIR already exists"
+fi
+
+require git "git is required (install via your package manager, e.g. 'brew install git')."
+require npx "npx is required (install Node.js: https://nodejs.org/, or 'brew install node')."
+
+log "cloning $DOTAGENTS_REPO into $DOTAGENTS_DIR"
+git clone "$DOTAGENTS_REPO" "$DOTAGENTS_DIR"
+
+log "running bin/setup"
+"$DOTAGENTS_DIR/bin/setup"
+
+log "installing skills from lockfile"
+( cd "$DOTAGENTS_DIR" && npx --yes skills experimental_install )
+
+log "running bin/doctor"
+"$DOTAGENTS_DIR/bin/doctor"
