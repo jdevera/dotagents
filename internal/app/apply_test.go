@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -672,5 +673,82 @@ func TestBackupPreservesReadOnlyDirectoryModes(t *testing.T) {
 	info, err := os.Stat(path)
 	if err != nil || info.Mode().Perm() != 0555 {
 		t.Fatalf("lost directory mode: %v %v", info, err)
+	}
+}
+
+func TestRenameRestoresReadOnlyModeOnSuccessAndFailure(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		name := "success"
+		if fail {
+			name = "failure"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			source := filepath.Join(root, "source")
+			destination := filepath.Join(root, "destination")
+			applyPut(t, filepath.Join(source, "SKILL.md"), "unchanged\n")
+			if err := os.Chmod(source, 0555); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				_ = os.Chmod(source, 0755)
+				_ = os.Chmod(destination, 0755)
+			})
+			calls := 0
+			err := renameWithDirectoryPermissions(source, destination, func(from, to string) error {
+				calls++
+				info, err := os.Stat(from)
+				if err != nil {
+					return err
+				}
+				if info.Mode().Perm()&0200 == 0 {
+					return &os.LinkError{Op: "rename", Old: from, New: to, Err: fs.ErrPermission}
+				}
+				if fail {
+					return fs.ErrExist
+				}
+				return os.Rename(from, to)
+			})
+			if calls != 2 || (fail && !errors.Is(err, fs.ErrExist)) || (!fail && err != nil) {
+				t.Fatalf("rename result: calls=%d error=%v", calls, err)
+			}
+			retained := destination
+			if fail {
+				retained = source
+			}
+			info, err := os.Stat(retained)
+			if err != nil || info.Mode().Perm() != 0555 {
+				t.Fatalf("original permissions not restored: %v %v", info, err)
+			}
+			data, err := os.ReadFile(filepath.Join(retained, "SKILL.md"))
+			if err != nil || string(data) != "unchanged\n" {
+				t.Fatalf("original bytes not retained: %s %v", data, err)
+			}
+		})
+	}
+}
+
+func TestRenamePermissionRecoveryNeverChmodsLinkTarget(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "target")
+	if err := os.Mkdir(target, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(target, 0755) })
+	source := filepath.Join(root, "source")
+	if err := os.Symlink(target, source); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	err := renameWithDirectoryPermissions(source, filepath.Join(root, "destination"), func(string, string) error {
+		calls++
+		return fs.ErrPermission
+	})
+	if !errors.Is(err, fs.ErrPermission) || calls != 1 {
+		t.Fatalf("symlink retried as directory: calls=%d error=%v", calls, err)
+	}
+	info, err := os.Stat(target)
+	if err != nil || info.Mode().Perm() != 0555 {
+		t.Fatalf("link target permissions changed: %v %v", info, err)
 	}
 }

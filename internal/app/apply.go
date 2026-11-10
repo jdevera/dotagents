@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jdevera/dotagents/internal/plugins"
@@ -552,6 +553,45 @@ func (b *limitedOutput) Write(data []byte) (int, error) {
 	return n, nil
 }
 
+func renameNode(source, destination string) error {
+	return renameWithDirectoryPermissions(source, destination, os.Rename)
+}
+
+func renameWithDirectoryPermissions(source, destination string, rename func(string, string) error) error {
+	err := rename(source, destination)
+	if !errors.Is(err, fs.ErrPermission) {
+		return err
+	}
+	info, statErr := os.Lstat(source)
+	if statErr != nil || !info.IsDir() || info.Mode().Perm()&0200 != 0 {
+		return err
+	}
+	// Some Darwin filesystems require write permission on the directory being
+	// renamed. Keep a descriptor so restoring its mode cannot follow a replaced
+	// source path or a symbolic link, including after a successful rename.
+	directory, openErr := os.OpenFile(source, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_DIRECTORY, 0)
+	if openErr != nil {
+		return errors.Join(err, openErr)
+	}
+	defer directory.Close()
+	opened, statErr := directory.Stat()
+	if statErr != nil {
+		return errors.Join(err, statErr)
+	}
+	if !os.SameFile(info, opened) {
+		return fmt.Errorf("directory changed before rename: %s", source)
+	}
+	if chmodErr := directory.Chmod(info.Mode() | 0200); chmodErr != nil {
+		return errors.Join(err, chmodErr)
+	}
+	renameErr := rename(source, destination)
+	restoreErr := directory.Chmod(info.Mode())
+	if restoreErr != nil {
+		restoreErr = fmt.Errorf("restore directory permissions after rename of %s: %w", source, restoreErr)
+	}
+	return errors.Join(renameErr, restoreErr)
+}
+
 func publishEntry(home, dir string, entry transactionEntry) error {
 	if _, err := safeDestination(home, entry.Action.Path); err != nil {
 		return err
@@ -588,7 +628,7 @@ func publishEntry(home, dir string, entry transactionEntry) error {
 		}
 	}
 	if kind != "absent" {
-		if err = os.Rename(entry.Action.Path, entry.TempOld); err != nil {
+		if err = renameNode(entry.Action.Path, entry.TempOld); err != nil {
 			return err
 		}
 	}
@@ -604,7 +644,7 @@ func publishEntry(home, dir string, entry transactionEntry) error {
 		if _, checkErr := os.Lstat(entry.Action.Path); !errors.Is(checkErr, os.ErrNotExist) {
 			return fmt.Errorf("destination appeared during apply: %s", entry.Action.Path)
 		}
-		err = os.Rename(entry.TempNew, entry.Action.Path)
+		err = renameNode(entry.TempNew, entry.Action.Path)
 	}
 	if err != nil {
 		return err
@@ -777,12 +817,12 @@ func (a *App) rollbackTransaction(dir string, record *transaction) error {
 			if _, err = os.Lstat(retired); !errors.Is(err, os.ErrNotExist) {
 				return fmt.Errorf("recovery path already exists: %s", retired)
 			}
-			if err = os.Rename(entry.Action.Path, retired); err != nil {
+			if err = renameNode(entry.Action.Path, retired); err != nil {
 				return err
 			}
 			if entry.OriginalKind != "absent" {
-				if err = os.Rename(entry.TempNew, entry.Action.Path); err != nil {
-					_ = os.Rename(retired, entry.Action.Path)
+				if err = renameNode(entry.TempNew, entry.Action.Path); err != nil {
+					_ = renameNode(retired, entry.Action.Path)
 					return err
 				}
 			}
@@ -790,7 +830,7 @@ func (a *App) rollbackTransaction(dir string, record *transaction) error {
 				return err
 			}
 		} else if entry.OriginalKind != "absent" {
-			if err = os.Rename(entry.TempNew, entry.Action.Path); err != nil {
+			if err = renameNode(entry.TempNew, entry.Action.Path); err != nil {
 				return err
 			}
 		}
