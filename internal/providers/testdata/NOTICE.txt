@@ -1,0 +1,2 @@
+td-create-installer.js is an inspection-only fixture from @doist/todoist-cli 5.12.0 (MIT), https://github.com/Doist/todoist-cli.
+jev-install-skills.py is an inspection-only fixture from the locally installed jev-cli 0.7.0 installer. Neither fixture is executed by tests or by dotagents.

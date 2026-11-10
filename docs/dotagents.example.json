@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "groups": {
+    "mac": { "os": ["darwin"] },
+    "linux": { "os": ["linux"] },
+    "work": {
+      "any": [
+        { "hostnames": ["work-*", "office-*"] },
+        { "env": { "DOTAGENTS_ROLE": "work" } }
+      ]
+    },
+    "personal-mac": {
+      "all": [
+        { "os": ["darwin"] },
+        {
+          "not": {
+            "any": [
+              { "hostnames": ["work-*", "office-*"] },
+              { "env": { "DOTAGENTS_ROLE": "work" } }
+            ]
+          }
+        }
+      ]
+    },
+    "arm-linux-with-dotfiles": {
+      "os": ["linux"],
+      "arch": ["arm64"],
+      "exists": ["~/.config/dotfiles-ready"]
+    }
+  },
+  "roots": [],
+  "skills": [],
+  "ignore": [],
+  "mcp": []
+}

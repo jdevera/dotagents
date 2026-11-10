@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>dotagents — your setup, accounted for</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#registry">Skip to inventory</a>
+  <header class="masthead">
+    <a class="wordmark" href="/" aria-label="dotagents home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>dotagents<span class="wordmark-dot">.</span></a>
+    <span class="local-label"><span class="local-dot" aria-hidden="true"></span>Local workspace</span>
+    <div class="header-actions"><span id="last-check" class="last-check">Not checked yet</span><button id="refresh" class="button button-dark" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 8a6 6 0 1 0 0 4M16 3v5h-5"/></svg><span>Check now</span></button></div>
+  </header>
+  <main>
+    <section class="intro" aria-labelledby="page-title">
+      <div class="intro-copy"><h1 id="page-title">Your setup,<br><em>accounted for.</em></h1><p>Skills, connections, and the changes between what you saved and what’s here.</p></div>
+      <div class="machine-block"><div class="machine-top"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="13" rx="2"/><path d="M8 21h8m-4-5v5"/></svg><span>This machine</span></div><strong id="machine-name">Reading your setup…</strong><p id="machine-platform">macOS &amp; Linux</p><div id="machine-groups" class="group-list"></div></div>
+    </section>
+    <div id="load-error" class="notice notice-error" role="alert" hidden></div>
+    <section id="summary" class="summary" aria-label="Check summary"><div class="summary-message"><span id="summary-indicator" class="indicator" aria-hidden="true"></span><div><strong id="summary-title">Taking inventory</strong><p id="summary-copy">Reading local files. Nothing will be installed or changed.</p></div></div><span id="summary-totals" class="summary-totals">—</span></section>
+    <nav class="section-tabs" aria-label="Workspace section"><button class="section-tab active" data-view="skills" aria-current="page">Skills <span id="skill-count">—</span></button><button class="section-tab" data-view="mcp">MCP connections <span id="mcp-count">—</span></button><button class="section-tab" data-view="plugins">Native plugins <span id="plugin-count">—</span></button><button class="section-tab" data-view="scope">Scan coverage <span id="issue-count" hidden>0</span></button></nav>
+    <section id="registry" class="registry" aria-label="Skill inventory">
+      <div class="toolbar"><div class="filters" role="group" aria-label="Filter skills"><button class="filter active" data-filter="all" aria-pressed="true">All skills</button><button class="filter" data-filter="attention" aria-pressed="false">Needs a look <span id="attention-count">0</span></button><button class="filter" data-filter="changed" aria-pressed="false">Changed</button><button class="filter" data-filter="ok" aria-pressed="false">In sync</button></div><label class="search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input id="search" type="search" placeholder="Find a skill or owner…" autocomplete="off" aria-label="Search skills"><kbd>/</kbd></label></div>
+      <div class="list-heading" aria-hidden="true"><span>Skill / source</span><span>Managed by</span><span>State</span><span></span></div>
+      <div id="skill-list" class="skill-list" aria-live="polite"><p class="empty">Reading your skill folders…</p></div>
+      <p id="list-footnote" class="list-footnote">Checks run when you request them. Unknown items are left in place.</p>
+    </section>
+    <section id="mcp-view" class="secondary-view" aria-labelledby="mcp-title" hidden><div class="section-heading"><h2 id="mcp-title">Connections on this machine</h2><p>Configuration inventory only. This check does not connect to or start any server.</p></div><div id="mcp-list"></div></section>
+    <section id="plugins-view" class="secondary-view" aria-labelledby="plugins-title" hidden><div class="section-heading"><h2 id="plugins-title">Native plugin declarations</h2><p>Agent settings are the evidence. A cached plugin does not prove that it is enabled or identify its active version.</p></div><div id="plugin-list"></div></section>
+    <section id="scope-view" class="secondary-view" aria-labelledby="scope-title" hidden><div class="section-heading"><h2 id="scope-title">What this check can see</h2><p>A clean result only covers the folders and configuration files listed here.</p></div><dl id="catalog-context" class="detail-meta catalog-context"></dl><div class="scope-layout"><section><h3>Skill folders &amp; MCP settings</h3><ul id="root-list" class="path-list"></ul></section><section><h3>Machine groups</h3><p id="group-explanation" class="scope-explanation"></p><h3>Couldn’t verify</h3><ul id="issues-list" class="issues-list"></ul></section></div></section>
+    <footer><span>One inventory. Clear ownership.</span><span>Read-only view <span class="footer-divider">/</span> Nothing changes without an explicit command.</span></footer>
+  </main>
+  <aside id="detail" class="detail" aria-labelledby="detail-name" hidden><div class="detail-top"><span>Skill details</span><button id="close-detail" class="icon-button" type="button" aria-label="Close skill details"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></div><div id="detail-content"></div></aside>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

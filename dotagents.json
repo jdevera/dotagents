@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "groups": {
+    "mac": {"os": ["darwin"]},
+    "linux": {"os": ["linux"]}
+  },
+  "skills": [],
+  "ignore": [],
+  "mcp": []
+}

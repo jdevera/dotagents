@@ -1,5 +1,8 @@
 .DS_Store
 *.log
+/.dotagents/
+/dist/
+/dotagents
 
 # Skills are not committed; each one is acknowledged here when first installed.
 skills/typescript-code-review/
