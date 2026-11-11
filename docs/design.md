@@ -13,14 +13,16 @@ binary for reading native Codex configuration.
 | `internal/app` | Catalog validation, machine conditions, report composition, CLI, reviewable plans, transactions, and backup. |
 | `internal/skills` | Filesystem discovery, complete skill trees, immutable content snapshots, and diffs. |
 | `internal/providers` | Read-only inspection of supported installed tool packages. |
-| `internal/integrations` | Skillshare fetching in isolated staging directories. |
+| `internal/integrations` | Optional pinned audit fetches and manual MCP staging. |
 | `internal/mcp` | Native MCP parsing, redaction, and fingerprints. |
 | `internal/plugins` | Native plugin declarations and evidenced active Claude skill roots. |
 | `internal/dashboard` | Embedded local dashboard and standalone HTML export. |
 
 The inventory and comparison packages do not install tools or contact MCP
 servers. The dashboard invokes reports and copies commands; it has no mutation
-endpoint. Only explicit CLI mutation commands change catalog or live state.
+endpoint. Only explicit CLI mutation commands change catalog or live state. Native
+Skillshare app/CLI changes are allowed directly; accepted audit snapshots do
+not gate or automatically follow those changes.
 
 ## Intent and accepted contents
 
@@ -69,22 +71,39 @@ provider configuration mechanism.
 
 ## Skillshare integration
 
-Fetching requests one skill at a full Git commit SHA in a temporary Skillshare
-library with no targets. Configuration, cache, state, and data paths are isolated;
-the process does not change `HOME`. The result must resolve to the requested
-commit and match Skillshare's recorded file hashes before it can be accepted.
+Skillshare owns its ordinary stable library and global configuration, so its
+native app and CLI operate on the same data. `skillshare-plan` reports the
+connection, missing upstream imports, target selection, source differences,
+and migration collisions. `skillshare-connect --phase prepare` initializes and
+fills that library through native commands. It does not sync live targets or
+accept new audit contents. The source must be outside agent discovery roots,
+otherwise target filtering cannot limit exposure.
 
-Publishing Skillshare-owned skills materialises accepted contents in transaction
-storage. Skillshare creates links in staging targets. The application verifies
-the staged links and contents before publishing them to the selected live
-locations. This avoids relying on the copy-mode drift behaviour found during
-evaluation. Skillshare is an optional executable dependency for these explicit
-operations; normal discovery and comparison do not need it.
+The `policy` phase applies calculated machine selection as native target
+exclusions, recording only the exclusions dotagents owns. Unrelated target
+settings and user filters remain native state. This phase does not sync either.
+A revision binds each operation to the plan reviewed immediately before it.
+Existing agent directories, foreign links, unsupported native policies, and
+pending sync are not silently called a successful migration.
+
+`plan`/`apply` delegate all Skillshare-owned skills rather than staging and
+publishing a second copy. New native changes remain observable against the
+accepted snapshots. Project topics likewise use native project registration,
+backup, and sync rather than a second project catalog.
+
+Optional `fetch`/`refresh` commands still request pinned GitHub contents through
+an isolated Skillshare library for audit comparisons. They verify native
+provenance and file hashes, but never update the permanent native library.
+This path is for explicit baseline inspection, not everyday installation.
+
+The desktop app has its own automatic update checks. The browser UI avoids that
+desktop watcher but refreshes visible status and fetches Git remotes on its Git
+Sync page. Dotagents does not schedule checks in either tool.
 
 ## Preview and transaction safety
 
-A plan's revision covers the catalog, selected machine, observed files, and
-proposed actions. Apply rechecks that revision and refuses stale plans. It
+For manually maintained and tool-owned contents, a plan's revision covers the
+catalog, selected machine, observed files, and proposed actions. Apply rechecks that revision and refuses stale plans. It
 prepares outputs and verified backups before replacing live paths. Publication
 uses temporary siblings and rename operations; it does not follow a changed
 destination blindly.
@@ -95,26 +114,30 @@ so later user edits are not overwritten. The separate `backup` command makes a
 permission-restricted archive of the repository and affected home-level skill
 and configuration paths, then reads it back to verify file hashes.
 
-Do not delete transaction storage while an installed Skillshare link points into
-its library. It is operational state, not a disposable cache.
+Old transaction storage may still be the destination of links created before
+the native handoff. It cannot be discarded until those installations have been
+migrated and inspected. New Skillshare-owned publication uses its stable library.
 
 ## Project topics
 
-Topics are named sets of skills. Machine groups still control eligibility;
-topics control which set is installed into a project. A `project` command copies
-the selected accepted snapshots into `.dotagents-project/`, creates target
-locations for the requested harnesses, and applies those entries transactionally.
-It rejects collisions with untracked project skills.
+Topics are named selections of Skillshare-owned skills. The `project` command
+checks machine eligibility, finds their current native-library contents, and
+registers selected target agents and include filters as a machine-local native
+Skillshare project. It previews for collisions, asks Skillshare to back up target
+folders, syncs through Skillshare, and verifies the expected links. Existing
+native selections are preserved. Native custom modes, naming, or managed agent
+configurations that the helper cannot safely extend require direct Skillshare
+configuration. Native project errors remain visible.
 
-Project-only scope excludes a skill from home-level installations. Scope changes
-are declarations, not silent uninstall operations. A subsequent reviewed plan
-can remove tracked out-of-scope skills only when they match their accepted
-contents and no dependent unknown links, native ownership, or incomplete scan
-make removal unsafe. Unknown installations remain untouched.
+No `.dotagents-project` directory or additional transaction is created. A legacy
+project catalog blocks the new helper until explicitly migrated. Shared team
+project configuration belongs to Skillshare's native project workflow; this
+helper registers personal folders outside the project repository.
 
-Project MCP settings are read from Claude's `.mcp.json` and Codex's
-`.codex/config.toml`. They use the same explicit MCP plan/apply/rollback flow;
-installing a skill topic does not implicitly activate servers.
+Project-only scope excludes a skill from home selection when policy is applied.
+It does not itself remove legacy installations. Skillshare's native preview and
+sync determine the actual target changes after migration conflicts are resolved.
+A topic operation does not activate MCP connections.
 
 ## MCP and private state
 
@@ -128,10 +151,15 @@ A clone of the public catalog cannot restore secrets it does not contain.
 Credentials and private snapshots need a separate private transfer/provisioning
 mechanism. `define-mcp` supports explicitly authored portable definitions in the
 catalog, rejecting common secret fields. It cannot prove that arbitrary user
-content is secret-free; the author must review it. MCP publication stages through
-Skillshare, verifies native output, preserves unrelated settings, and stores
-private transaction backups. The application does not claim to implement a
-secret-distribution system.
+content is secret-free; the author must review it.
+
+MCP records carry optional ownership. `skillshare` and `native` records are
+always audited but delegated by `mcp-plan`/`mcp-apply`; old accepted bytes never
+replace their owner's changes. An empty or `manual` owner retains the explicit
+manual publication flow: stage through Skillshare, verify native output,
+preserve unrelated settings, and store private transaction backups. Track and
+define operations preserve an existing owner unless explicitly changed. The
+application does not claim to implement a secret-distribution system.
 
 ## Verification boundaries
 

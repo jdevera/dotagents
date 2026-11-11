@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -263,58 +262,27 @@ func TestPlanSkipsUnselectedAndNative(t *testing.T) {
 	}
 }
 
-func TestSkillshareFailureLeavesAllTargetsUntouched(t *testing.T) {
+func TestPlanDelegatesSkillshareChanges(t *testing.T) {
 	a := applyFixture(t)
-	bin := t.TempDir()
-	binary := filepath.Join(bin, "skillshare")
-	applyPut(t, binary, "#!/bin/sh\necho test-sync-failure >&2\nexit 1\n")
-	if err := os.Chmod(binary, 0755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
 	location := ".agents/skills/example"
 	target := filepath.Join(a.Home, location)
-	applyPut(t, filepath.Join(target, "SKILL.md"), "original\n")
+	applyPut(t, filepath.Join(target, "SKILL.md"), "changed through native app\n")
 	addAccepted(t, a, "example", "skillshare", location, "accepted\n")
-	_, before, err := pathFingerprint(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := a.Apply(context.Background(), requirePlan(t, a).Revision); err == nil || !strings.Contains(err.Error(), "test-sync-failure") {
-		t.Fatalf("failed sync accepted: %v", err)
-	}
-	_, after, err := pathFingerprint(target)
-	if err != nil || after != before {
-		t.Fatal("preparation failure changed target")
-	}
-}
-
-func TestSkillshareRealLinkAndRollback(t *testing.T) {
-	if _, err := exec.LookPath("skillshare"); err != nil {
-		t.Skip("optional installed Skillshare integration")
-	}
-	a := applyFixture(t)
-	location := ".agents/skills/example"
-	addAccepted(t, a, "example", "skillshare", location, "---\nname: example\ndescription: Test fixture\n---\nAccepted\n")
 	p := requirePlan(t, a)
-	id, err := a.Apply(context.Background(), p.Revision)
-	if err != nil {
+	if len(p.Actions) != 0 || len(p.Delegated) != 1 || p.Delegated[0] != "example" {
+		t.Fatalf("native-owned skill was not delegated: %+v", p)
+	}
+	if _, err := a.Apply(context.Background(), p.Revision); err != nil {
 		t.Fatal(err)
 	}
-	target := filepath.Join(a.Home, location)
-	if !a.isManagedLink(target) {
-		t.Fatal("Skillshare result is not a managed link")
+	data, err := os.ReadFile(filepath.Join(target, "SKILL.md"))
+	if err != nil || string(data) != "changed through native app\n" {
+		t.Fatal("dotagents overwrote native app changes")
 	}
-	if p := requirePlan(t, a); len(p.Actions) != 0 {
-		t.Fatalf("linked skill not idempotent: %+v", p)
-	}
-	applyPut(t, filepath.Join(target, "SKILL.md"), "edit through managed link\n")
-	if err := a.Rollback(id); err == nil || !strings.Contains(err.Error(), "contents changed since apply") {
-		t.Fatalf("rollback ignored changed link contents: %v", err)
-	}
-	applyPut(t, filepath.Join(target, "SKILL.md"), "---\nname: example\ndescription: Test fixture\n---\nAccepted\n")
-	if err := a.Rollback(id); err != nil {
-		t.Fatal(err)
+	a.Config.Skills[0].Scope = "project"
+	p = requirePlan(t, a)
+	if len(p.Actions) != 0 || len(p.Delegated) != 1 {
+		t.Fatalf("native removals must be delegated: %+v", p)
 	}
 }
 
@@ -370,7 +338,7 @@ func installAcceptedFixture(t *testing.T, a *App, index int) {
 
 func TestRemoveOutOfScopeAliasesAndRollback(t *testing.T) {
 	a := applyFixture(t)
-	addAccepted(t, a, "example", "skillshare", ".agents/skills/example", "accepted\n")
+	addAccepted(t, a, "example", "manual", ".agents/skills/example", "accepted\n")
 	installAcceptedFixture(t, a, 0)
 	alias := filepath.Join(a.Home, ".codex/skills/example")
 	if err := os.MkdirAll(filepath.Dir(alias), 0755); err != nil {

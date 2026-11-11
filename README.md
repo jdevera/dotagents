@@ -2,8 +2,10 @@
 
 Know what your coding agents are running—and what changed.
 
-`dotagents` keeps a catalog of the skills and MCP connections you want on each
-machine. It discovers things installed outside the catalog, saves the actual
+**Skillshare manages installations and updates. dotagents checks what changed.**
+
+`dotagents` keeps an audit catalog of the skills and MCP connections you want on
+each machine. It discovers things installed outside the catalog, saves the actual
 skill contents you accept, and compares those files with both your current
 installation and the output supplied by supported tools.
 
@@ -59,6 +61,57 @@ machine. OS, architecture, hostname, and environment conditions still describe
 the machine running the command. Examples below use `dotagents` on your PATH;
 substitute `./dist/dotagents` when running from the checkout.
 
+## Use Skillshare as the manager
+
+Use the native Skillshare app or CLI for installing, updating, syncing, and
+restoring Skillshare-owned resources. Those changes may become live directly;
+dotagents does not require a second approval. Its accepted snapshots stay
+unchanged until you explicitly accept a new baseline.
+
+To connect a catalog to the same global configuration the native UI uses:
+
+```sh
+dotagents skillshare-plan
+dotagents skillshare-connect --phase prepare --revision HASH_FROM_PLAN
+dotagents skillshare-plan
+dotagents skillshare-connect --phase policy --revision NEW_HASH_FROM_PLAN
+skillshare sync --global --dry-run
+```
+
+`prepare` initializes a stable native library when needed and installs missing
+repository skills through Skillshare. It does not sync agent folders or accept
+new contents. `policy` translates the catalog's current machine selection into
+native target exclusions, preserving unrelated settings. Rerun the plan after
+each phase; its revision covers the state being changed.
+
+A prepared library is **not a completed migration**. Existing directories,
+foreign symlinks, differing contents, and pending native sync remain visible.
+Resolve migration collisions after inspecting backups; do not use a broad
+`--force` to clear them. When the native preview is right, sync in Skillshare.
+
+The default library is `skills/` inside the selected catalog, outside agent
+discovery roots. An existing native configuration keeps its source location.
+Both the CLI and desktop app must use the same Skillshare configuration; the
+normal location is `~/.config/skillshare/config.yaml`.
+
+Open Skillshare's browser interface with:
+
+```sh
+skillshare ui --global
+```
+
+Its usual address is [127.0.0.1:19420](http://127.0.0.1:19420). The dotagents
+view remains a separate audit report, with a link to that manager. If Skillshare
+chooses another port, use the address it prints.
+
+The desktop app uses the same native library, but version 0.8.2 checks upstream
+updates at launch, daily, and after source changes. Auto-sync is separately
+opt-in. For a workflow without that desktop watcher, use the browser UI; it
+refreshes visible local status and fetches Git remotes when opening Git Sync.
+See the [desktop update watcher](https://github.com/runkids/skillshare-app/blob/v0.8.2/src-tauri/src/services/update_watch.rs)
+and [browser Git Sync flow](https://github.com/runkids/skillshare/blob/v0.30.1/ui/src/pages/GitSyncPage.tsx).
+Dotagents itself adds no scheduled checks.
+
 ## Bring an installed skill into the catalog
 
 First inspect `scan`, then adopt the path you actually want to track:
@@ -78,7 +131,7 @@ Choose the owner deliberately:
 | Owner | Meaning |
 | --- | --- |
 | `manual` | Your authored or deliberately maintained contents. |
-| `skillshare` | A repository skill to publish through Skillshare links. |
+| `skillshare` | Skillshare owns installation and updates; dotagents audits it. |
 | `td` | Compare with the supported generator in the installed Todoist CLI. |
 | `jev` | Compare with the installed Jev bundle and ownership marker. |
 | `native` | Record an agent/plugin-owned installation for inspection. |
@@ -185,7 +238,7 @@ tool binaries.
 
 ## Put a topic into a project
 
-Topics group accepted skills independently of machine groups. Tag the skills
+Topics group catalog entries independently of machine groups. Tag the skills
 once, then install the topic wherever you need it:
 
 ```sh
@@ -194,37 +247,30 @@ dotagents tag durable-objects --topics cloudflare --scope project
 dotagents project cloudflare --directory /path/to/project
 ```
 
-The last command installs the selected accepted skills for Codex and Claude;
-use `--targets codex` or `--targets claude` to narrow that selection. It creates
-a project catalog at `.dotagents-project/`, copies the accepted snapshot objects,
-and applies through the same backup and rollback flow. An untracked skill with
-the same destination name blocks installation instead of being overwritten.
-Native-owned skills cannot be republished this way.
+The last command registers the project in native Skillshare and syncs the
+selected topic from its current library for Codex and Claude. Use `--targets
+codex` or `--targets claude` to narrow the selection. The library must already
+be prepared, and every selected skill must have `owner: "skillshare"`.
 
-`--scope project` keeps a skill out of future global installations. Tagging alone
-does **not** remove anything. The next global `plan` can propose removing its
-tracked global copies, and `apply` performs that reviewed removal only when
-their contents still match the accepted version. Local edits, native ownership,
-incomplete discovery, or dependent unknown links block removal. Unknown skills
-are never removed just because they are outside the catalog.
-
-Inspect or restore the project using its catalog and root:
+It uses a machine-local native project registration with include filters,
+previews collisions, asks Skillshare to back up the target folders, and then
+uses Skillshare's project sync. Existing project selections are preserved.
+There is no additional `.dotagents-project` catalog or dotagents transaction.
+The command prints the native configuration and library paths it used.
 
 ```sh
-dotagents check --repo /path/to/project/.dotagents-project --home /path/to/project
-dotagents rollback TRANSACTION_ID \
-  --repo /path/to/project/.dotagents-project --home /path/to/project
+skillshare project show /path/to/project --json
+skillshare project sync /path/to/project
 ```
 
-The project catalog and its accepted objects can be versioned after review.
-Its private `.dotagents/` directory is ignored. Generated links are specific to
-the checkout and should be recreated with `plan` and `apply` on another machine.
-Project MCP definitions use the same track/define/plan/apply commands with the
-project's `--repo` and `--home`. Claude uses the project's `.mcp.json`; Codex uses
-its `.codex/config.toml`. A topic command installs skills; it does not implicitly
-activate MCP connections.
+`--scope project` excludes a skill from the home policy. Tagging alone does not
+remove an existing global installation: regenerate policy, inspect native sync,
+and resolve any old installation collisions. A project topic does not activate
+MCP connections. For project configuration shared with a team, use Skillshare's
+native `.skillshare/` workflow directly; this command registers personal
+project folders without adding files to their repositories.
 
-## Preview, back up, then apply
+## Audit upstream changes and apply manually managed contents
 
 To add one repository skill, fetch it at a full Git commit SHA. This uses
 Skillshare in an isolated staging directory and records accepted contents
@@ -248,7 +294,9 @@ dotagents refresh cf-cli --ref FULL_COMMIT_SHA --accept
 `refresh` resolves the latest GitHub commit unless you pass `--ref`, fetches that
 exact version, and shows the diff. Without `--accept`, neither the catalog nor
 the installation changes. With `--accept`, the new snapshot and source pin are
-recorded; installation still requires a separate reviewed plan.
+recorded. It does not update the native Skillshare library or installed skills;
+use Skillshare for ordinary upstream updates. `fetch` and `refresh` are optional
+audit-baseline tools, not an alternative native manager.
 
 ```sh
 dotagents backup
@@ -256,8 +304,13 @@ dotagents plan
 dotagents apply --revision HASH_PRINTED_BY_PLAN
 ```
 
-`plan` previews the changes and gives you a revision. `apply` requires that exact
-revision, checks for intervening changes, and takes a verified backup before
+`plan` and `apply` publish only manually maintained and supported tool-owned
+contents. Skillshare-owned entries are listed as delegated and never restored
+from an old audit snapshot by these commands. Native agent/plugin-owned skills
+also remain under their original manager.
+
+For contents dotagents does publish, `plan` gives you a revision. `apply` requires
+that exact revision, checks for intervening changes, and takes a verified backup before
 writing. Conflicts are reported instead of silently replacing untracked data.
 The transaction ID printed by apply can be used with:
 
@@ -285,7 +338,28 @@ dotagents track-mcp my-server --client codex --groups work
 dotagents check
 ```
 
-The catalog contains a fingerprint and a redacted definition. The exact accepted
+Each MCP record has an optional `owner`: `skillshare`, `native`, or `manual`.
+An omitted owner means `manual`. Mark connections managed in Skillshare as
+`skillshare`; mark runtime-owned connections as `native`. Recapturing or defining
+a template preserves existing ownership. `mcp-plan` lists external owners as
+delegated, and `mcp-apply` never resets or removes their entries. Checks still
+report their differences and machine-rule mismatches.
+
+To bring a portable existing connection into Skillshare without activating it
+elsewhere or starting its server:
+
+```sh
+skillshare mcp import my-server --from codex --target codex --global --no-tui --dry-run
+skillshare mcp import my-server --from codex --target codex --global --no-tui
+```
+
+Import saves its source and ownership baseline. Leave off `--sync` and
+`--replace`; a mismatch requiring credential conversion or other changes must
+be reviewed rather than silently rewritten. Machine-specific runtime MCPs need
+not be imported. Different core definitions sharing a name across clients also
+need an explicit naming decision: Skillshare's global source keys by name.
+
+The dotagents catalog contains a fingerprint and a redacted definition. The exact accepted
 definition stays in `.dotagents/private/mcp/` with restrictive permissions.
 Changes—including credential changes—can therefore be detected without putting
 raw settings into a report or Git.
@@ -308,7 +382,8 @@ secret fields are rejected, but this is not a universal secret detector: review
 the file before storing or publishing it. Do not feed a raw private settings
 file into this command.
 
-MCP publication uses Skillshare in isolated staging, preserves unrelated native
+For `manual` MCP entries, publication still uses Skillshare in isolated staging,
+preserves unrelated native
 settings, and verifies the reviewed revision before writing. Private backups are
 kept for rollback:
 
@@ -316,16 +391,19 @@ kept for rollback:
 dotagents mcp-rollback TRANSACTION_ID
 ```
 
-Changing an MCP rule's groups lets `mcp-plan` propose activation or removal on
-the appropriate machines. Later edits block rollback rather than being lost.
+Changing a manual MCP rule's groups lets `mcp-plan` propose activation or removal
+on the appropriate machines. For externally owned MCPs, groups are checked as
+intent; selection and publication remain in the native manager. Later edits
+block rollback rather than being lost.
 
 ## What each piece does
 
-- **dotagents** owns the catalog, machine rules, discovery, accepted snapshots,
-  comparisons, reviewable plans, and backups.
-- **Skillshare** is used for its supported skill fetching/linking and MCP staging. It
-  is a separate executable needed for those operations, not for inventory,
-  snapshot comparisons, or viewing reports.
+- **Skillshare** owns its live library, updates, target links, project
+  registrations, and imported MCP connections. Its app and CLI see the same data.
+- **dotagents** owns audit snapshots, discovery, machine conditions, and content
+  comparisons. Its native policy command writes the resulting skill exclusions
+  into Skillshare. It retains explicit publication only for manual/tool-owned
+  contents and manual MCP entries.
 - **Tool adapters** inspect supported `td` and `jev` installations without
   running their installers. Package layouts outside the recognised forms are
   reported as unverified. `probe --path /installed/package` can select an
@@ -353,8 +431,10 @@ are not guessed from cached directories. Plugin caches alone are never proof
 that a plugin is active.
 
 Account-side integrations and arbitrary project folders are not silently
-inferred. Select a project's catalog explicitly to inspect it. The report lists
-its scan scope; a clean result is only a statement about that scope. MCP support
+inferred. Native Skillshare projects are inspected with Skillshare's project
+commands; adding a project does not expand dotagents' home scan automatically.
+The report lists its scan scope; a clean result is only a statement about that
+scope. MCP support
 currently covers Claude and Codex. Tool adapters are deliberately narrow; more
 can be added without changing who owns those skills.
 

@@ -4,18 +4,36 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
 
 func reviewTopic(t *testing.T, a *App, id, topic string) {
 	t.Helper()
-	addAccepted(t, a, id, "manual", ".agents/skills/"+id, "accepted "+id+"\n")
+	if _, err := exec.LookPath("skillshare"); err != nil {
+		t.Skip("native Skillshare integration requires the skillshare executable")
+	}
+	addAccepted(t, a, id, "skillshare", ".agents/skills/"+id, "accepted "+id+"\n")
 	a.Config.Skills[len(a.Config.Skills)-1].Topics = []string{topic}
 	a.Config.Skills[len(a.Config.Skills)-1].Scope = "project"
 	if err := a.Save(); err != nil {
+		t.Fatal(err)
+	}
+	library := filepath.Join(a.Repo, "native-library")
+	config, err := json.Marshal(map[string]any{"sources": map[string]string{"skills": library}, "mode": "merge", "targets": map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyPut(t, a.SkillshareConfigPath(), string(config))
+	tree, err := a.Store().Load(a.Config.Skills[len(a.Config.Skills)-1].Snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeTree(filepath.Join(library, id), tree); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -26,10 +44,15 @@ func TestReviewProjectKeepsUntrackedCollision(t *testing.T) {
 	project := t.TempDir()
 	target := filepath.Join(project, ".agents/skills/example/SKILL.md")
 	applyPut(t, target, "untracked project instructions\n")
-	_, _ = a.Project(context.Background(), "frontend", project, []string{"codex"})
+	if _, err := a.Project(context.Background(), "frontend", project, []string{"codex"}); err == nil {
+		t.Fatal("untracked collision was not refused")
+	}
 	data, err := os.ReadFile(target)
 	if err != nil || string(data) != "untracked project instructions\n" {
 		t.Fatalf("project install overwrote unknown skill: %q %v", data, err)
+	}
+	if _, err := os.Lstat(filepath.Join(project, ".dotagents-project")); !os.IsNotExist(err) {
+		t.Fatal("native project flow created a duplicate dotagents catalog")
 	}
 }
 
@@ -112,7 +135,6 @@ func TestReviewProjectEvaluatesHomeConditionAgainstMachineHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.Home = actualHome
 	a.Machine.Home = actualHome
 	a.Config.Groups["marked"] = Condition{Exists: []string{"~/" + rel}}
 	a.Machine.Groups = []string{"marked"}
@@ -180,16 +202,28 @@ func TestReviewProjectTargetsRemainTrackedWhenAddingAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	project, err := Open(result.Catalog, directory)
+	if result.Config == "" {
+		t.Fatal("native registration path missing")
+	}
+	data, err := a.SkillshareCommand(context.Background(), "project", "show", result.Directory, "--json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(project.Config.Skills) != 1 || len(project.Config.Skills[0].Locations) != 2 {
-		t.Fatalf("existing target ownership was dropped: %+v", project.Config.Skills)
+	var registered struct {
+		Project nativeProject `json:"project"`
+	}
+	if err := json.Unmarshal(data, &registered); err != nil {
+		t.Fatal(err)
+	}
+	if len(registered.Project.Targets) != 2 {
+		t.Fatalf("existing native target ownership was dropped: %s", data)
+	}
+	if len(result.Backups) < 3 {
+		t.Fatalf("registration and native target backup results missing: %+v", result)
 	}
 }
 
-func TestReviewProjectRejectsEditsInSelectedTopic(t *testing.T) {
+func TestReviewProjectPreservesNativeSourceEditsWithoutAccepting(t *testing.T) {
 	a := applyFixture(t)
 	reviewTopic(t, a, "example", "frontend")
 	directory := t.TempDir()
@@ -197,11 +231,15 @@ func TestReviewProjectRejectsEditsInSelectedTopic(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := filepath.Join(directory, ".agents/skills/example/SKILL.md")
+	before := a.Config.Skills[0].Snapshot
 	applyPut(t, target, "local project changes\n")
-	if _, err := a.Project(context.Background(), "frontend", directory, []string{"codex"}); err == nil {
-		t.Fatal("selected local edits were overwritten without review")
+	if _, err := a.Project(context.Background(), "frontend", directory, []string{"codex"}); err != nil {
+		t.Fatal(err)
 	}
 	if data, _ := os.ReadFile(target); string(data) != "local project changes\n" {
 		t.Fatal("project update destroyed local edits")
+	}
+	if a.Config.Skills[0].Snapshot != before {
+		t.Fatal("native source edits were automatically accepted into audit catalog")
 	}
 }

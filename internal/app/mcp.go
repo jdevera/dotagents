@@ -56,6 +56,7 @@ func (a *App) TrackMCP(client, name string, groups []string) error {
 	found := false
 	for i, existing := range a.Config.MCP {
 		if existing.Name == name && existing.Client == client {
+			rule.Owner = existing.Owner
 			a.Config.MCP[i] = rule
 			found = true
 			break

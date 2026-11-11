@@ -30,12 +30,15 @@ Read-only commands:
   diff ID              Show file changes for one tracked skill
   probe td|jev         Inspect the current tool's output without running it
   refresh ID          Compare a repository skill against its latest upstream
-  plan                 Preview changes needed to install accepted skills
+  skillshare-plan      Preview native Skillshare library and machine policy
+  plan                 Preview publication for skills not managed by Skillshare
   mcp-plan             Preview selected MCP settings through Skillshare
   serve                Open a local, read-only dashboard (manual refresh)
   export --output FILE Save a standalone dashboard you can open offline
 
 Explicit changes:
+  skillshare-connect --phase prepare|policy --revision HASH
+                       Prepare native library or save machine filters; never sync
   init                 Create an empty catalog in --repo
   backup               Archive and verify the repository and affected home files
   adopt PATH           Track an installed skill and save its actual files
@@ -45,7 +48,7 @@ Explicit changes:
   tag ID --topics TOPIC [--scope home|project]
                        Group accepted skills for one-command project installation
   project TOPIC --directory PATH [--targets codex,claude]
-                       Install a topic in a project, with backups and rollback
+                       Install a topic through the native Skillshare project manager
   accept ID --from installed|tool
                        Accept a reviewed new snapshot; does not install it
   ignore PATH --reason TEXT
@@ -117,6 +120,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) int {
 	scope := fs.String("scope", "", "home or project")
 	directory := fs.String("directory", "", "project directory")
 	only := fs.String("only", "", "only these skill IDs when planning/applying")
+	phase := fs.String("phase", "", "native Skillshare connection phase: prepare or policy")
 	accept := fs.Bool("accept", false, "accept refreshed upstream contents without installing")
 	definitionFile := fs.String("file", "", "portable MCP definition JSON")
 	ordered, err := interspersed(fs, args[1:])
@@ -159,6 +163,65 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) int {
 	}
 	a.Only = splitGroups(*only)
 	switch command {
+	case "skillshare-plan":
+		if len(pos) != 0 {
+			return fail(errors.New("skillshare-plan takes no positional arguments"))
+		}
+		plan, err := a.NativeSkillsharePlan(ctx)
+		if err != nil {
+			return fail(err)
+		}
+		if *jsonOutput {
+			if code := writeJSON(out, plan, fail); code != 0 {
+				return code
+			}
+			if len(plan.Issues) > 0 {
+				return 1
+			}
+			return 0
+		}
+		fmt.Fprintf(out, "Native configuration: %s\nSkill library: %s\n", plan.ConfigPath, plan.Source)
+		for _, imp := range plan.Imports {
+			status := "import from upstream"
+			if imp.Present {
+				status = fmt.Sprintf("in library; %d changed files vs accepted", imp.Changes)
+			}
+			fmt.Fprintf(out, "  %-28s %s\n", imp.Name, status)
+		}
+		for _, target := range plan.Targets {
+			fmt.Fprintf(out, "Target %s: %s\n  add excludes: %s\n  remove generated excludes: %s\n", target.Name, target.Path, strings.Join(target.AddExclude, ", "), strings.Join(target.RemoveExclude, ", "))
+		}
+		for _, collision := range plan.Collisions {
+			fmt.Fprintf(out, "MIGRATION: %s — %s\n", collision.Path, collision.Message)
+		}
+		for _, warning := range plan.Warnings {
+			fmt.Fprintln(out, "NOTE:", warning)
+		}
+		for _, pending := range plan.Pending {
+			fmt.Fprintln(out, "PENDING SYNC:", pending)
+		}
+		for _, issue := range plan.Issues {
+			fmt.Fprintln(out, "BLOCKED:", issue)
+		}
+		fmt.Fprintf(out, "\nRevision: %s\nNative handoff complete: %t\n", plan.Revision, plan.Ready)
+		if len(plan.Issues) > 0 {
+			return 1
+		}
+		return 0
+	case "skillshare-connect":
+		if len(pos) != 0 || *phase == "" || *revision == "" {
+			return fail(errors.New("usage: dotagents skillshare-connect --phase prepare|policy --revision HASH"))
+		}
+		result, err := a.ConnectSkillshare(ctx, *phase, *revision)
+		if err != nil {
+			return fail(err)
+		}
+		if *jsonOutput {
+			return writeJSON(out, result, fail)
+		}
+		fmt.Fprintln(out, result.Message)
+		fmt.Fprintf(out, "Config: %s\nSource: %s\nRemaining migration collisions: %d\n", result.Plan.ConfigPath, result.Plan.Source, len(result.Plan.Collisions))
+		return 0
 	case "backup":
 		if len(pos) != 0 {
 			return fail(errors.New("backup takes no positional arguments"))
@@ -357,7 +420,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) int {
 		if *jsonOutput {
 			return writeJSON(out, result, fail)
 		}
-		fmt.Fprintf(out, "Installed %s into %s\nCatalog: %s\nTransaction: %s\n", strings.Join(result.Skills, ", "), result.Directory, result.Catalog, result.Transaction)
+		fmt.Fprintf(out, "Installed %s into %s through Skillshare\nNative configuration: %s\nSource: %s\n", strings.Join(result.Skills, ", "), result.Directory, result.Config, result.Source)
 		return 0
 	case "accept":
 		if len(pos) != 1 || *from == "" {
@@ -418,6 +481,9 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) int {
 			}
 			return 0
 		}
+		if len(p.Delegated) > 0 {
+			fmt.Fprintf(out, "Managed directly by Skillshare: %s\nUse skillshare sync --dry-run to preview those installations.\n", strings.Join(p.Delegated, ", "))
+		}
 		for _, action := range p.Actions {
 			fmt.Fprintf(out, "%-9s %-22s %s\n", action.Kind, action.ID, action.Path)
 		}
@@ -425,7 +491,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) int {
 			fmt.Fprintln(out, "BLOCKED:", issue)
 		}
 		if len(p.Actions) == 0 && len(p.Issues) == 0 {
-			fmt.Fprintln(out, "Accepted skills are already installed as planned.")
+			fmt.Fprintln(out, "No dotagents publication changes. Run check to see content differences.")
 		} else {
 			fmt.Fprintf(out, "\nPlan revision: %s\nApply with: dotagents apply --revision %s\n", p.Revision, p.Revision)
 		}
@@ -472,6 +538,9 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) int {
 			}
 			return 0
 		}
+		for _, delegated := range p.Delegated {
+			fmt.Fprintln(out, "Managed externally:", delegated)
+		}
 		for _, action := range p.Actions {
 			fmt.Fprintf(out, "%-9s %-8s %s\n", action.Kind, action.Client, action.Name)
 			for _, change := range action.Changes {
@@ -482,7 +551,7 @@ func Run(ctx context.Context, args []string, out, errOut io.Writer) int {
 			fmt.Fprintln(out, "BLOCKED:", issue)
 		}
 		if len(p.Actions) == 0 && len(p.Issues) == 0 {
-			fmt.Fprintln(out, "Selected MCP definitions already match.")
+			fmt.Fprintln(out, "No dotagents MCP publication changes. Run check to inspect externally managed connections.")
 		} else {
 			fmt.Fprintf(out, "\nPlan revision: %s\nApply with: dotagents mcp-apply --revision %s\n", p.Revision, p.Revision)
 		}

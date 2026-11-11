@@ -414,3 +414,114 @@ func TestPortableMCPTemplateInstallsWithoutPrivateSnapshotOnMatchingMachine(t *t
 		t.Fatal(err)
 	}
 }
+
+func TestMCPExternalOwnersRemainAuditedWithoutPublication(t *testing.T) {
+	for _, owner := range []string{"skillshare", "native"} {
+		for _, wanted := range []bool{true, false} {
+			name := owner + "/wanted"
+			if !wanted {
+				name = owner + "/not-wanted"
+			}
+			t.Run(name, func(t *testing.T) {
+				a := applyFixture(t)
+				path := filepath.Join(a.Home, ".claude.json")
+				const original = `{"mcpServers":{"docs":{"type":"http","url":"https://new-from-owner.test"}}}`
+				applyPut(t, path, original)
+				acceptedMCP(t, a, "claude", "docs", map[string]any{"type": "http", "url": "https://old-accepted.test"}, nil)
+				a.Config.MCP[0].Owner = owner
+				if !wanted {
+					a.Config.Groups["elsewhere"] = Condition{Hostnames: []string{"another-machine"}}
+					a.Config.MCP[0].Groups = []string{"elsewhere"}
+				}
+				if err := a.Save(); err != nil {
+					t.Fatal(err)
+				}
+				// The check still detects the owner's update; delegation must not
+				// silently accept it or hide it from the user's inventory.
+				f := finding(t, a.Report(context.Background()), "mcp:claude:docs")
+				if wanted && f.Status != "changed" {
+					t.Fatalf("owner's update was not reported: %+v", f)
+				}
+				if !wanted && f.Status != "unexpected" {
+					t.Fatalf("machine rule was not reported: %+v", f)
+				}
+				stage := func(context.Context, string, []integrations.MCPDesired) (integrations.MCPStage, error) {
+					t.Fatal("externally managed MCP was passed to the publisher")
+					return integrations.MCPStage{}, nil
+				}
+				p, err := a.prepareMCP(context.Background(), stage)
+				if err != nil || len(p.Plan.Actions) != 0 || len(p.Plan.Issues) != 0 || len(p.Plan.Delegated) != 1 {
+					t.Fatalf("external ownership did not delegate: %+v %v", p.Plan, err)
+				}
+				id, err := a.mcpApply(context.Background(), p.Plan.Revision, stage)
+				if err != nil || id != "" {
+					t.Fatalf("delegated MCP apply created a transaction: %q %v", id, err)
+				}
+				actual, err := os.ReadFile(path)
+				if err != nil || string(actual) != original {
+					t.Fatalf("owner's live definition was changed: %s %v", actual, err)
+				}
+			})
+		}
+	}
+}
+
+func TestMCPMixedOwnershipPreservesExternalDefinition(t *testing.T) {
+	a := applyFixture(t)
+	path := filepath.Join(a.Home, ".claude.json")
+	applyPut(t, path, `{"mcpServers":{"external":{"type":"http","url":"https://owner-update.test"},"manual":{"type":"http","url":"https://old-manual.test"}}}`)
+	acceptedMCP(t, a, "claude", "external", map[string]any{"type": "http", "url": "https://old-external.test"}, nil)
+	acceptedMCP(t, a, "claude", "manual", map[string]any{"type": "http", "url": "https://new-manual.test"}, nil)
+	a.Config.MCP[0].Owner = "skillshare"
+	if err := a.Save(); err != nil {
+		t.Fatal(err)
+	}
+	p := mcpPrepared(t, a)
+	if len(p.Plan.Actions) != 1 || p.Plan.Actions[0].Name != "manual" || len(p.Plan.Delegated) != 1 {
+		t.Fatalf("mixed ownership plan incorrect: %+v", p.Plan)
+	}
+	if _, err := a.mcpApply(context.Background(), p.Plan.Revision, fakeMCPStage); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := mcp.ReadDefinition(a.Home, "claude", "external")
+	if err != nil || actual["url"] != "https://owner-update.test" {
+		t.Fatalf("manual update overwrote external ownership: %+v %v", actual, err)
+	}
+}
+
+func TestMCPCaptureAndTemplatePreserveOwnership(t *testing.T) {
+	for _, owner := range []string{"native", "skillshare"} {
+		t.Run(owner, func(t *testing.T) {
+			a := applyFixture(t)
+			path := filepath.Join(a.Home, ".claude.json")
+			applyPut(t, path, `{"mcpServers":{"docs":{"type":"http","url":"https://initial.test"}}}`)
+			if err := a.TrackMCP("claude", "docs", nil); err != nil {
+				t.Fatal(err)
+			}
+			a.Config.MCP[0].Owner = owner
+			before := a.Config.MCP[0].Fingerprint
+			if err := a.Save(); err != nil {
+				t.Fatal(err)
+			}
+			applyPut(t, path, `{"mcpServers":{"docs":{"type":"http","url":"https://owner-update.test"}}}`)
+			if err := a.TrackMCP("claude", "docs", nil); err != nil {
+				t.Fatal(err)
+			}
+			if a.Config.MCP[0].Owner != owner || a.Config.MCP[0].Fingerprint == before {
+				t.Fatalf("recapture lost owner or kept old snapshot: %+v", a.Config.MCP[0])
+			}
+			template := filepath.Join(t.TempDir(), "definition.json")
+			applyPut(t, template, `{"type":"http","url":"https://template.test"}`)
+			if err := a.DefineMCP("claude", "docs", template, nil); err != nil {
+				t.Fatal(err)
+			}
+			if a.Config.MCP[0].Owner != owner {
+				t.Fatalf("template definition reclaimed ownership: %+v", a.Config.MCP[0])
+			}
+			a.Config.MCP[0].Owner = "misspelled-owner"
+			if err := a.Config.Validate(); err == nil {
+				t.Fatal("unknown MCP owner accepted")
+			}
+		})
+	}
+}

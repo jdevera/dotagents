@@ -45,6 +45,21 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: ${{ matrix.go }}
+      - name: Install pinned Skillshare for integration tests
+        shell: bash
+        run: |
+          case "$(uname -s)-$(uname -m)" in
+            Linux-x86_64) skillshare_platform=linux_amd64; skillshare_digest=58e106e5317eb6e50988ca8350cb218818185b038a077286d42e217f33c3877d ;;
+            Darwin-arm64) skillshare_platform=darwin_arm64; skillshare_digest=62f8fa604d2e1867eddf282484302bd73fa06d07464ac951a6e977e9d8f90430 ;;
+            Darwin-x86_64) skillshare_platform=darwin_amd64; skillshare_digest=46ba4ece1b832809bfad705b51f2a96797514ee8ea12f0831ecb3e9568abea8b ;;
+            *) exit 1 ;;
+          esac
+          skillshare_archive="$RUNNER_TEMP/skillshare.tar.gz"
+          curl --fail --location --retry 3 "https://github.com/runkids/skillshare/releases/download/v0.30.1/skillshare_0.30.1_${skillshare_platform}.tar.gz" -o "$skillshare_archive"
+          printf '%s  %s\n' "$skillshare_digest" "$skillshare_archive" | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/skillshare-bin"
+          tar -xzf "$skillshare_archive" -C "$RUNNER_TEMP/skillshare-bin" skillshare
+          printf '%s\n' "$RUNNER_TEMP/skillshare-bin" >> "$GITHUB_PATH"
       - run: make test vet
 
   binaries:

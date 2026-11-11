@@ -12,7 +12,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -24,9 +23,10 @@ import (
 )
 
 type Plan struct {
-	Revision string   `json:"revision"`
-	Actions  []Action `json:"actions"`
-	Issues   []string `json:"issues"`
+	Revision  string   `json:"revision"`
+	Actions   []Action `json:"actions"`
+	Issues    []string `json:"issues"`
+	Delegated []string `json:"delegated_to_skillshare,omitempty"`
 }
 
 type Action struct {
@@ -70,6 +70,10 @@ func (a *App) Plan() (Plan, error) {
 	}
 	for _, entry := range a.Config.Skills {
 		if len(selected) > 0 && !contains(selected, entry.ID) {
+			continue
+		}
+		if entry.Owner == "skillshare" {
+			p.Delegated = append(p.Delegated, entry.ID)
 			continue
 		}
 		wanted := a.skillWanted(entry)
@@ -134,8 +138,7 @@ func (a *App) Plan() (Plan, error) {
 				continue
 			}
 			changed := kind == "absent" || len(skills.Diff(accepted, installed)) > 0
-			linkNeeded := entry.Owner == "skillshare" && !a.isManagedLink(path)
-			if !changed && !linkNeeded {
+			if !changed {
 				continue
 			}
 			if entry.Owner == "native" {
@@ -145,8 +148,6 @@ func (a *App) Plan() (Plan, error) {
 			action := Action{ID: entry.ID, Path: path, Kind: "replace", Owner: entry.Owner, Snapshot: entry.Snapshot}
 			if kind == "absent" {
 				action.Kind = "install"
-			} else if linkNeeded {
-				action.Kind = "link"
 			}
 			p.Actions = append(p.Actions, action)
 		}
@@ -168,23 +169,6 @@ func (a *App) Plan() (Plan, error) {
 	}
 	p.Revision = hashBytes(data)
 	return p, nil
-}
-
-func (a *App) isManagedLink(path string) bool {
-	link, err := os.Readlink(path)
-	if err != nil {
-		return false
-	}
-	if !filepath.IsAbs(link) {
-		link = filepath.Join(filepath.Dir(path), link)
-	}
-	base := filepath.Join(a.Repo, ".dotagents", "transactions")
-	rel, err := filepath.Rel(base, filepath.Clean(link))
-	if err != nil || !pathWithin(base, link) {
-		return false
-	}
-	parts := strings.Split(rel, string(filepath.Separator))
-	return len(parts) == 3 && identifier.MatchString(parts[0]) && parts[1] == "library" && identifier.MatchString(parts[2])
 }
 
 // Removing a source directory must not strand an untracked or still-selected
@@ -415,23 +399,10 @@ func (a *App) prepareTransaction(ctx context.Context, dir string, plan Plan, rec
 			record.Entries = append(record.Entries, entry)
 			continue
 		}
-		if action.Owner == "skillshare" {
-			library := filepath.Join(dir, "library", action.ID)
-			if _, err := os.Lstat(library); errors.Is(err, os.ErrNotExist) {
-				if err = writeTree(library, accepted); err != nil {
-					return err
-				}
-			} else if err != nil {
-				return err
-			}
-			entry.AppliedLink = library
-		} else if err = writeTree(filepath.Join(dir, entry.Stage), accepted); err != nil {
+		if err = writeTree(filepath.Join(dir, entry.Stage), accepted); err != nil {
 			return err
 		}
 		record.Entries = append(record.Entries, entry)
-	}
-	if err := stageSkillshare(ctx, dir, record.Entries); err != nil {
-		return err
 	}
 	for i := range record.Entries {
 		entry := &record.Entries[i]
@@ -457,100 +428,6 @@ func (a *App) prepareTransaction(ctx context.Context, dir string, plan Plan, rec
 	}
 	record.Status = "prepared"
 	return nil
-}
-
-func stageSkillshare(ctx context.Context, dir string, entries []transactionEntry) error {
-	targets := map[string]any{}
-	for i, entry := range entries {
-		if entry.Action.Owner == "skillshare" && entry.Action.Kind != "remove" {
-			path := filepath.Join(dir, "skillshare-targets", fmt.Sprintf("%04d", i))
-			if err := os.MkdirAll(path, 0700); err != nil {
-				return err
-			}
-			targets[fmt.Sprintf("target-%04d", i)] = map[string]any{"skills": map[string]any{"path": path, "include": []string{entry.Action.ID}}}
-		}
-	}
-	if len(targets) == 0 {
-		return nil
-	}
-	binary, err := exec.LookPath("skillshare")
-	if err != nil {
-		return errors.New("Skillshare is required to apply Skillshare-owned entries; install it first")
-	}
-	config := map[string]any{"sources": map[string]string{"skills": filepath.Join(dir, "library"), "agents": filepath.Join(dir, "agents")}, "mode": "merge", "targets": targets}
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err = os.MkdirAll(filepath.Join(dir, "agents"), 0700); err != nil {
-		return err
-	}
-	configPath := filepath.Join(dir, "skillshare-config.yaml")
-	if err = os.WriteFile(configPath, data, 0600); err != nil {
-		return err
-	}
-	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(bounded, binary, "sync", "--global", "--no-tui")
-	cmd.WaitDelay = 2 * time.Second
-	cmd.Dir = dir
-	for _, value := range os.Environ() {
-		key, _, _ := strings.Cut(value, "=")
-		if !strings.HasPrefix(key, "SKILLSHARE_") && key != "XDG_CONFIG_HOME" && key != "XDG_DATA_HOME" && key != "XDG_STATE_HOME" && key != "XDG_CACHE_HOME" {
-			cmd.Env = append(cmd.Env, value)
-		}
-	}
-	cmd.Env = append(cmd.Env, "SKILLSHARE_CONFIG="+configPath, "XDG_CONFIG_HOME="+filepath.Join(dir, "runtime", "config"), "XDG_DATA_HOME="+filepath.Join(dir, "runtime", "data"), "XDG_STATE_HOME="+filepath.Join(dir, "runtime", "state"), "XDG_CACHE_HOME="+filepath.Join(dir, "runtime", "cache"))
-	var output limitedOutput
-	cmd.Stdout = &output
-	cmd.Stderr = &output
-	if err = cmd.Run(); err != nil {
-		return fmt.Errorf("isolated Skillshare sync failed: %w: %s", err, output.String())
-	}
-	for i, entry := range entries {
-		if entry.Action.Owner == "skillshare" && entry.Action.Kind != "remove" {
-			generated := filepath.Join(dir, "skillshare-targets", fmt.Sprintf("%04d", i), entry.Action.ID)
-			link, err := os.Readlink(generated)
-			if err != nil {
-				return fmt.Errorf("Skillshare did not produce a link for %s: %w", entry.Action.ID, err)
-			}
-			resolved, err := filepath.EvalSymlinks(generated)
-			if err != nil {
-				return err
-			}
-			expected, err := filepath.EvalSymlinks(entry.AppliedLink)
-			if err != nil {
-				return err
-			}
-			if link == "" || resolved != expected {
-				return fmt.Errorf("Skillshare linked %s to an unexpected source", entry.Action.ID)
-			}
-			stage := filepath.Join(dir, entry.Stage)
-			if err = os.MkdirAll(filepath.Dir(stage), 0700); err != nil {
-				return err
-			}
-			if err = os.Symlink(entry.AppliedLink, stage); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-type limitedOutput struct{ buffer bytes.Buffer }
-
-func (b *limitedOutput) String() string { return b.buffer.String() }
-
-func (b *limitedOutput) Write(data []byte) (int, error) {
-	n := len(data)
-	remaining := (64 << 10) - b.buffer.Len()
-	if remaining > 0 {
-		if len(data) > remaining {
-			data = data[:remaining]
-		}
-		_, _ = b.buffer.Write(data)
-	}
-	return n, nil
 }
 
 func renameNode(source, destination string) error {

@@ -19,9 +19,10 @@ import (
 )
 
 type MCPPlan struct {
-	Revision string      `json:"revision"`
-	Actions  []MCPAction `json:"actions"`
-	Issues   []string    `json:"issues"`
+	Revision  string      `json:"revision"`
+	Actions   []MCPAction `json:"actions"`
+	Issues    []string    `json:"issues"`
+	Delegated []string    `json:"delegated,omitempty"`
 }
 
 type MCPAction struct {
@@ -69,6 +70,10 @@ func (a *App) prepareMCP(ctx context.Context, stage mcpStager) (preparedMCP, err
 	byClient := map[string]map[string]any{}
 	failed := map[string]bool{}
 	for _, rule := range a.Config.MCP {
+		if rule.Owner == "skillshare" || rule.Owner == "native" {
+			prepared.Plan.Delegated = append(prepared.Plan.Delegated, rule.Client+"/"+rule.Name+" ("+rule.Owner+")")
+			continue
+		}
 		if _, ok := byClient[rule.Client]; ok || failed[rule.Client] {
 			continue
 		}
@@ -105,6 +110,9 @@ func (a *App) prepareMCP(ctx context.Context, stage mcpStager) (preparedMCP, err
 	}
 	desired := []integrations.MCPDesired{}
 	for _, rule := range a.Config.MCP {
+		if rule.Owner == "skillshare" || rule.Owner == "native" {
+			continue
+		}
 		if failed[rule.Client] {
 			continue
 		}
@@ -169,6 +177,7 @@ func (a *App) prepareMCP(ctx context.Context, stage mcpStager) (preparedMCP, err
 		return left.Name < right.Name
 	})
 	sort.Strings(prepared.Plan.Issues)
+	sort.Strings(prepared.Plan.Delegated)
 	outputs := map[string]string{}
 	for path, data := range prepared.Stage.Files {
 		outputs[path] = hashBytes(data)

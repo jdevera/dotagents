@@ -49,6 +49,7 @@ type Ignore struct {
 type MCPRule struct {
 	Name        string         `json:"name"`
 	Client      string         `json:"client"`
+	Owner       string         `json:"owner,omitempty"`
 	Fingerprint string         `json:"fingerprint"`
 	Groups      []string       `json:"groups,omitempty"`
 	Definition  map[string]any `json:"definition,omitempty"`
@@ -223,6 +224,11 @@ func (c Config) Validate() error {
 			return fmt.Errorf("duplicate MCP %s", key)
 		}
 		seenMCP[key] = true
+		switch m.Owner {
+		case "", "manual", "skillshare", "native":
+		default:
+			return fmt.Errorf("MCP %s: owner must be manual, skillshare or native", key)
+		}
 		if m.Name == "" || m.Client == "" || (m.Fingerprint == "" && m.Template == nil) {
 			return errors.New("MCP rules need name, client and fingerprint")
 		}

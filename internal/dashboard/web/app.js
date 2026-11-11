@@ -23,6 +23,26 @@ function icon(path, className) {
   svg.append(shape);
   return svg;
 }
+const symbols = {
+  skills: 'M4 2h8l4 4v12H4z M12 2v5h4 M7 11h6 M7 14h4',
+  mcp: 'M7 3v4 M13 3v4 M5 7h10v2a5 5 0 0 1-10 0z M10 14v4',
+  plugins: 'M7 3h6v4h4v6h-4v4H7v-4H3V7h4z',
+  scope: 'M7 3H3v4 M13 3h4v4 M17 13v4h-4 M7 17H3v-4 M6 10l3 3 5-6',
+  tool: 'm4 5 4 5-4 5 M11 15h5',
+  person: 'M13 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0 M4 17v-2a6 6 0 0 1 12 0v2',
+  share: 'M8 6H4v10h10v-4 M11 3h6v6 M17 3l-8 8',
+  unknown: 'M7 7a3 3 0 1 1 5 2c-2 1-2 2-2 3 M10 16v.1',
+};
+function ownerSymbol(value) {
+  if (value === 'manual') return symbols.person;
+  if (value === 'skillshare') return symbols.share;
+  if (['native', 'plugin', 'builtin', 'codex-system', 'claude-sync', 'native-plugin'].includes(value)) return symbols.plugins;
+  if (['td', 'jev', 'skills-cli'].includes(value) || string(value).startsWith('tool:')) return symbols.tool;
+  return symbols.unknown;
+}
+for (const tab of document.querySelectorAll('.section-tab')) {
+  tab.prepend(icon(symbols[tab.dataset.view], 'nav-icon'));
+}
 function statusNode(status) {
   return element('span', `status ${Object.hasOwn(labels, status) ? status : 'unverified'}`, labels[status] || status || 'Not verified');
 }
@@ -104,7 +124,10 @@ function renderSkills() {
     const identity = element('span', 'skill-identity');
     identity.append(element('span', 'skill-name', row.name));
     identity.append(element('span', 'skill-source', row.source || row.path || list(row.locations)[0] || 'Source not recorded'));
-    const owner = element('span', 'skill-owner', ownerLabel(row.owner || row.owner_hint));
+    const owner = element('span', 'skill-owner');
+    const ownerName = element('span', 'owner-name', ownerLabel(row.owner || row.owner_hint));
+    ownerName.prepend(icon(ownerSymbol(row.owner || row.owner_hint), 'owner-icon'));
+    owner.append(ownerName);
     if (row.status === 'unknown' && (row.owner || row.owner_hint)) owner.append(element('small', '', 'Detected, not confirmed'));
     button.append(identity, owner, statusNode(row.status), icon('m7 4 6 6-6 6', 'skill-arrow'));
     button.addEventListener('click', () => openDetail(row, button));

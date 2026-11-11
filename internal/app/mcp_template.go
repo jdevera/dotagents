@@ -77,6 +77,7 @@ func (a *App) DefineMCP(client, name, file string, groups []string) error {
 	found := false
 	for i, old := range a.Config.MCP {
 		if old.Client == client && old.Name == name {
+			rule.Owner = old.Owner
 			a.Config.MCP[i] = rule
 			found = true
 			break
